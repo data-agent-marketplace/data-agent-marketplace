@@ -1,0 +1,57 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build-and-health:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h 127.0.0.1 -p 5432"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install frontend
+        run: npm ci
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Install backend
+        run: npm ci
+        working-directory: backend
+      - name: Wait for Postgres
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          for i in {1..30}; do pg_isready -h 127.0.0.1 -p 5432 && break || sleep 2; done
+      - name: Start backend
+        env:
+          SESSION_SECRET: devsecret
+          MARKETPLACE_MASTER_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          SMALL_LIMIT: 5
+          FRONTEND_ORIGIN: http://localhost:3000
+        run: |
+          node src/server.js & echo $! > backend_pid
+          sleep 4
+        working-directory: backend
+      - name: Health check
+        run: |
+          for i in {1..10}; do curl -sSf http://localhost:4000/healthz && exit 0 || sleep 2; done
+          exit 1
+      - name: Stop backend
+        run: |
+          kill $(cat backend/backend_pid) || true
