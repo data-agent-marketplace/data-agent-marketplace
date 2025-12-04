@@ -9,6 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+      - ./deploy/db/init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
     restart: unless-stopped
   backend:
     build: ./backend
@@ -27,3 +28,14 @@ services:
     ports:
       - "4000:4000"
     restart: unless-stopped
+  migrator:
+    image: postgres:16
+    environment:
+      - PGPASSWORD=udam
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend/migrations:/migrations:ro
+    entrypoint: ["bash","-lc"]
+    command: "for f in /migrations/*.sql; do echo Applying $f; psql -h postgres -U udam -d udam -f \"$f\"; done"
+    restart: "no"
