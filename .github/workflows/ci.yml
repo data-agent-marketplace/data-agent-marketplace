@@ -68,6 +68,16 @@ jobs:
           echo "$ORDER_JSON" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); if(!(j.payment_requires_confirmation===false)) process.exit(1)"
           TOKENS=$(curl -s http://localhost:4000/tokens -H "Authorization: Bearer $TOKEN")
           echo "$TOKENS" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); if(!Array.isArray(j) || j.length<1) process.exit(1)"
+      - name: Concurrency lock test
+        run: |
+          set -e
+          TOKEN=$(curl -s -X POST http://localhost:4000/auth/login -H 'Content-Type: application/json' -d '{"email":"ci2@example.com","oauth_provider":"email"}' | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(j.session_token||'')")
+          LID=$(curl -s -X POST http://localhost:4000/listings -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"service_name":"Lock Test","api_key":"K","price_per_unit":"1","unit_description":"req","available_units":"3"}' | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(String(j.id||''))")
+          seq 1 5 | xargs -I{} -P 5 bash -lc "curl -s -X POST http://localhost:4000/orders -H 'Authorization: Bearer $TOKEN' -H 'Content-Type: application/json' -d '{\"listing_id\":'\"$LID\"',\"units_requested\":1}' >/dev/null || true"
+          TOKENS=$(curl -s http://localhost:4000/tokens -H "Authorization: Bearer $TOKEN")
+          echo "$TOKENS" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); if(!Array.isArray(j) || j.length!==3) process.exit(1)"
+          L=$(curl -s http://localhost:4000/listings/$LID -H "Authorization: Bearer $TOKEN")
+          echo "$L" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); if(!(j.available_units===0 && j.status==='sold_out')) process.exit(1)"
       - name: Stop backend
         run: |
           kill $(cat backend/backend_pid) || true

@@ -22,6 +22,18 @@ app.use(
   })
 );
 app.use(bodyParser.json());
+app.use((req, res, next) => {
+  const rid = uuidv4();
+  req.rid = rid;
+  res.on("finish", () => {
+    try {
+      console.log(
+        JSON.stringify({ rid, method: req.method, path: req.path, status: res.statusCode })
+      );
+    } catch {}
+  });
+  next();
+});
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const smallLimit = parseFloat(process.env.SMALL_LIMIT || "5");
 const port = process.env.PORT || 4000;
@@ -49,10 +61,18 @@ app.post("/listings", requireAuth, async (req, res) => {
   const { service_name, api_key, price_per_unit, unit_description, available_units } = req.body;
   if (!service_name || !api_key || !price_per_unit || !unit_description || !available_units)
     return res.status(400).json({ error: "missing_fields" });
-  const p = Number(price_per_unit);
+  const sn = String(service_name);
+  const ud = String(unit_description);
+  const ak = String(api_key);
+  const pp = String(price_per_unit);
+  if (sn.length < 1 || sn.length > 128) return res.status(400).json({ error: "bad_service_name" });
+  if (ud.length < 1 || ud.length > 128) return res.status(400).json({ error: "bad_unit_description" });
+  if (ak.length < 1 || ak.length > 4096) return res.status(400).json({ error: "bad_api_key" });
+  if (!/^\d+(\.\d{1,2})?$/.test(pp)) return res.status(400).json({ error: "bad_price" });
+  const p = Number(pp);
   const a = parseInt(available_units);
   if (!Number.isFinite(p) || p <= 0 || p > 1e9) return res.status(400).json({ error: "bad_price" });
-  if (!Number.isInteger(a) || a <= 0 || a > 1e9) return res.status(400).json({ error: "bad_available_units" });
+  if (!Number.isInteger(a) || a <= 0 || a > 1e6) return res.status(400).json({ error: "bad_available_units" });
   const enc = encrypt(String(api_key));
   const r = await query(
     "INSERT INTO listings(owner_id, service_name, api_key_encrypted, price_per_unit, unit_description, available_units, status) VALUES($1,$2,$3,$4,$5,$6,'active') RETURNING id",
@@ -133,6 +153,15 @@ app.post("/orders", requireAuth, async (req, res) => {
     await query("ROLLBACK");
     throw e;
   }
+});
+app.get("/listings/:id", requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const r = await query(
+    "SELECT id, service_name, price_per_unit, unit_description, available_units, status FROM listings WHERE id=$1",
+    [id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: "not_found" });
+  res.json(r.rows[0]);
 });
 app.get("/orders/:id", requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
