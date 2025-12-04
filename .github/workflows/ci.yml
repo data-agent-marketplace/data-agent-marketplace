@@ -39,7 +39,7 @@ jobs:
           for i in {1..30}; do pg_isready -h 127.0.0.1 -p 5432 && break || sleep 2; done
       - name: Apply SQL migrations
         run: |
-          psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f backend/migrations/001_init.sql
+          for f in backend/migrations/*.sql; do echo "Applying $f"; psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f "$f"; done
         env:
           PGPASSWORD: postgres
       - name: Start backend

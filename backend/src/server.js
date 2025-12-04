@@ -93,10 +93,11 @@ app.post("/orders", requireAuth, async (req, res) => {
       await query("UPDATE orders SET payment_status='paid' WHERE id=$1", [order_id]);
       const apiKey = decrypt(listing.api_key_encrypted);
       const expires_at = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-      await query(
-        "INSERT INTO tokens(order_id, service_name, api_key_plain, expires_at) VALUES($1,$2,$3,$4)",
-        [order_id, listing.service_name, apiKey, expires_at]
-      );
+    const encToken = encrypt(apiKey);
+    await query(
+      "INSERT INTO tokens(order_id, service_name, api_key_encrypted, expires_at) VALUES($1,$2,$3,$4)",
+      [order_id, listing.service_name, encToken, expires_at]
+    );
       await query(
         "UPDATE listings SET available_units=available_units-$1, status=CASE WHEN available_units-$1<=0 THEN 'sold_out' ELSE status END WHERE id=$2",
         [units, listing_id]
@@ -142,10 +143,12 @@ app.get("/orders/:id", requireAuth, async (req, res) => {
 app.get("/tokens", requireAuth, async (req, res) => {
   const uid = req.userId;
   const r = await query(
-    "SELECT t.id as token_id, t.service_name, t.api_key_plain as api_key, t.expires_at FROM tokens t JOIN orders o ON t.order_id=o.id WHERE o.buyer_id=$1 ORDER BY t.id DESC",
+    "SELECT t.id as token_id, t.service_name, t.api_key_encrypted, t.expires_at FROM tokens t JOIN orders o ON t.order_id=o.id WHERE o.buyer_id=$1 ORDER BY t.id DESC",
     [uid]
   );
-  res.json(r.rows);
+  res.json(
+    r.rows.map((row) => ({ token_id: row.token_id, service_name: row.service_name, api_key: decrypt(row.api_key_encrypted), expires_at: row.expires_at }))
+  );
 });
 app.post("/webhooks/stripe", bodyParser.raw({ type: "application/json" }), async (req, res) => {
   let event = null;
@@ -175,10 +178,11 @@ app.post("/webhooks/stripe", bodyParser.raw({ type: "application/json" }), async
           await query("UPDATE orders SET payment_status='paid' WHERE id=$1", [order_id]);
           const apiKey = decrypt(row.api_key_encrypted);
           const expires_at = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-          await query(
-            "INSERT INTO tokens(order_id, service_name, api_key_plain, expires_at) VALUES($1,$2,$3,$4)",
-            [order_id, row.service_name, apiKey, expires_at]
-          );
+        const encToken = encrypt(apiKey);
+        await query(
+          "INSERT INTO tokens(order_id, service_name, api_key_encrypted, expires_at) VALUES($1,$2,$3,$4)",
+          [order_id, row.service_name, encToken, expires_at]
+        );
           await query(
             "UPDATE listings SET available_units=available_units-$1, status=CASE WHEN available_units-$1<=0 THEN 'sold_out' ELSE status END WHERE id=$2",
             [row.units, row.listing_id]
@@ -236,10 +240,11 @@ app.get("/orders/dev/confirm/:id", async (req, res) => {
     await query("UPDATE orders SET payment_status='paid' WHERE id=$1", [order_id]);
     const apiKey = decrypt(row.api_key_encrypted);
     const expires_at = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-    await query(
-      "INSERT INTO tokens(order_id, service_name, api_key_plain, expires_at) VALUES($1,$2,$3,$4)",
-      [order_id, row.service_name, apiKey, expires_at]
-    );
+  const encToken = encrypt(apiKey);
+  await query(
+    "INSERT INTO tokens(order_id, service_name, api_key_encrypted, expires_at) VALUES($1,$2,$3,$4)",
+    [order_id, row.service_name, encToken, expires_at]
+  );
     await query(
       "UPDATE listings SET available_units=available_units-$1, status=CASE WHEN available_units-$1<=0 THEN 'sold_out' ELSE status END WHERE id=$2",
       [row.units, row.listing_id]
