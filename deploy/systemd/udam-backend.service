@@ -1,0 +1,14 @@
+[Unit]
+Description=UDAM Backend
+After=network.target
+
+[Service]
+Environment=PORT=4000
+WorkingDirectory=/srv/udam/backend
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+User=udam
+Group=udam
+
+[Install]
+WantedBy=multi-user.target

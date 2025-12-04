@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=udam
+      - POSTGRES_PASSWORD=udam
+      - POSTGRES_DB=udam
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+  backend:
+    build: ./backend
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MARKETPLACE_MASTER_KEY=${MARKETPLACE_MASTER_KEY}
+      - DATABASE_URL=postgres://udam:udam@postgres:5432/udam
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
+      - SMALL_LIMIT=${SMALL_LIMIT}
+      - SUCCESS_URL=${SUCCESS_URL}
+      - CANCEL_URL=${CANCEL_URL}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    depends_on:
+      - postgres
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
